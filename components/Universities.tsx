@@ -1,404 +1,307 @@
 "use client";
 
-import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-  FaArrowLeft,
-  FaBookOpen,
-  FaGlobe,
-  FaGraduationCap,
-  FaMapMarkerAlt,
-  FaSearch,
-  FaUniversity,
-} from "react-icons/fa";
-
-type UniversityType = "حكومية" | "خاصة";
-type ApplicationStatus = "مفتوح" | "قريبًا" | "مغلق";
-type StudyLanguage = "العربية" | "التركية" | "الإنجليزية";
+  FaBuildingColumns,
+  FaLocationDot,
+  FaMoneyBillWave,
+  FaStar,
+} from "react-icons/fa6";
+import { supabase } from "@/lib/supabase";
 
 type University = {
   id: number;
+  name_ar: string;
+  name_tr: string;
   slug: string;
-  name: string;
-  englishName: string;
   city: string;
-  type: UniversityType;
-  languages: StudyLanguage[];
-  programs: number;
-  tuition: string;
-  applicationStatus: ApplicationStatus;
-  featured: boolean;
+  university_type: "private" | "public";
+  short_description: string;
+  image_url: string;
+  image_storage_path: string;
+  logo_url: string;
+  logo_storage_path: string;
+  tuition_min: number | null;
+  tuition_max: number | null;
+  currency: string;
+  application_url: string;
+  is_featured: boolean;
+  is_active: boolean;
+  display_order: number;
 };
 
-const universities: University[] = [
-  {
-    id: 1,
-    slug: "istanbul-university",
-    name: "جامعة إسطنبول",
-    englishName: "Istanbul University",
-    city: "إسطنبول",
-    type: "حكومية",
-    languages: ["التركية", "الإنجليزية", "العربية"],
-    programs: 180,
-    tuition: "تُحدّد حسب التخصص",
-    applicationStatus: "مفتوح",
-    featured: true,
-  },
-  {
-    id: 2,
-    slug: "istanbul-medipol-university",
-    name: "جامعة إسطنبول ميديبول",
-    englishName: "Istanbul Medipol University",
-    city: "إسطنبول",
-    type: "خاصة",
-    languages: ["التركية", "الإنجليزية", "العربية"],
-    programs: 95,
-    tuition: "تُحدّد حسب التخصص",
-    applicationStatus: "مفتوح",
-    featured: true,
-  },
-  {
-    id: 3,
-    slug: "ankara-university",
-    name: "جامعة أنقرة",
-    englishName: "Ankara University",
-    city: "أنقرة",
-    type: "حكومية",
-    languages: ["التركية", "الإنجليزية"],
-    programs: 150,
-    tuition: "تُحدّد حسب التخصص",
-    applicationStatus: "قريبًا",
-    featured: false,
-  },
-  {
-    id: 4,
-    slug: "bahcesehir-university",
-    name: "جامعة بهتشه شهير",
-    englishName: "Bahçeşehir University",
-    city: "إسطنبول",
-    type: "خاصة",
-    languages: ["الإنجليزية", "التركية", "العربية"],
-    programs: 80,
-    tuition: "تُحدّد حسب التخصص",
-    applicationStatus: "مفتوح",
-    featured: true,
-  },
-  {
-    id: 5,
-    slug: "gazi-university",
-    name: "جامعة غازي",
-    englishName: "Gazi University",
-    city: "أنقرة",
-    type: "حكومية",
-    languages: ["التركية"],
-    programs: 130,
-    tuition: "تُحدّد حسب التخصص",
-    applicationStatus: "قريبًا",
-    featured: false,
-  },
-  {
-    id: 6,
-    slug: "istinye-university",
-    name: "جامعة إستينيا",
-    englishName: "Istinye University",
-    city: "إسطنبول",
-    type: "خاصة",
-    languages: ["الإنجليزية", "التركية", "العربية"],
-    programs: 70,
-    tuition: "تُحدّد حسب التخصص",
-    applicationStatus: "مفتوح",
-    featured: true,
-  },
-];
+function getPublicAssetUrl(path: string): string {
+  if (!path) return "";
 
-const cities = ["الكل", "إسطنبول", "أنقرة"];
-const universityTypes = ["الكل", "حكومية", "خاصة"];
-const studyLanguages = ["الكل", "العربية", "التركية", "الإنجليزية"];
+  const { data } = supabase.storage
+    .from("universities")
+    .getPublicUrl(path);
 
-function getStatusClasses(status: ApplicationStatus) {
-  if (status === "مفتوح") {
-    return "bg-emerald-500 text-white";
+  return data.publicUrl;
+}
+
+function formatTuition(
+  min: number | null,
+  max: number | null,
+  currency: string
+) {
+  const formatter = new Intl.NumberFormat("ar", {
+    maximumFractionDigits: 0,
+  });
+
+  if (min !== null && max !== null) {
+    return `${formatter.format(min)} - ${formatter.format(max)} ${currency}`;
   }
 
-  if (status === "قريبًا") {
-    return "bg-amber-400 text-[#04153f]";
+  if (min !== null) {
+    return `تبدأ من ${formatter.format(min)} ${currency}`;
   }
 
-  return "bg-red-500 text-white";
+  if (max !== null) {
+    return `حتى ${formatter.format(max)} ${currency}`;
+  }
+
+  return "تواصل معنا لمعرفة الرسوم";
 }
 
 export default function Universities() {
-  const [search, setSearch] = useState("");
-  const [selectedCity, setSelectedCity] = useState("الكل");
-  const [selectedType, setSelectedType] = useState("الكل");
-  const [selectedLanguage, setSelectedLanguage] = useState("الكل");
+  const [universities, setUniversities] = useState<University[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const filteredUniversities = useMemo(() => {
-    const searchValue = search.trim().toLowerCase();
+  const fetchUniversities = useCallback(async () => {
+    setLoading(true);
+    setErrorMessage("");
 
-    return universities.filter((university) => {
-      const matchesSearch =
-        university.name.toLowerCase().includes(searchValue) ||
-        university.englishName.toLowerCase().includes(searchValue);
+    const { data, error } = await supabase
+      .from("universities")
+      .select(`
+        id,
+        name_ar,
+        name_tr,
+        slug,
+        city,
+        university_type,
+        short_description,
+        image_url,
+        image_storage_path,
+        logo_url,
+        logo_storage_path,
+        tuition_min,
+        tuition_max,
+        currency,
+        application_url,
+        is_featured,
+        is_active,
+        display_order
+      `)
+      .eq("is_active", true)
+      .order("is_featured", { ascending: false })
+      .order("display_order", { ascending: true })
+      .order("created_at", { ascending: false });
 
-      const matchesCity =
-        selectedCity === "الكل" || university.city === selectedCity;
+    if (error) {
+      console.error("تعذر تحميل الجامعات:", error);
+      setErrorMessage(error.message);
+      setUniversities([]);
+    } else {
+      setUniversities((data ?? []) as University[]);
+    }
 
-      const matchesType =
-        selectedType === "الكل" || university.type === selectedType;
+    setLoading(false);
+  }, []);
 
-      const matchesLanguage =
-        selectedLanguage === "الكل" ||
-        university.languages.includes(selectedLanguage as StudyLanguage);
+  useEffect(() => {
+    fetchUniversities();
 
-      return (
-        matchesSearch &&
-        matchesCity &&
-        matchesType &&
-        matchesLanguage
-      );
-    });
-  }, [search, selectedCity, selectedType, selectedLanguage]);
+    const channel = supabase
+      .channel("public-universities")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "universities",
+        },
+        () => {
+          fetchUniversities();
+        }
+      )
+      .subscribe();
 
-  function resetFilters() {
-    setSearch("");
-    setSelectedCity("الكل");
-    setSelectedType("الكل");
-    setSelectedLanguage("الكل");
-  }
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchUniversities]);
 
   return (
     <section
       id="universities"
       dir="rtl"
-      className="relative overflow-hidden bg-[#f7f8fb] py-24"
+      className="bg-[#f7f8fb] px-4 py-16 sm:px-6 lg:px-8 lg:py-24"
     >
-      <div className="absolute -right-32 top-20 h-80 w-80 rounded-full bg-[#c58a08]/10 blur-3xl" />
-      <div className="absolute -left-32 bottom-20 h-80 w-80 rounded-full bg-[#04153f]/10 blur-3xl" />
-
-      <div className="relative mx-auto max-w-7xl px-6">
-        <div className="mx-auto mb-14 max-w-3xl text-center">
-          <span className="inline-flex items-center gap-2 rounded-full border border-[#c58a08]/20 bg-[#c58a08]/10 px-5 py-2 text-sm font-bold text-[#9a6b00]">
-            <FaUniversity />
-            دليلك للدراسة في تركيا
+      <div className="mx-auto max-w-7xl">
+        <div className="mx-auto mb-12 max-w-3xl text-center">
+          <span className="inline-flex items-center gap-2 rounded-full bg-[#c58a08]/10 px-4 py-2 text-sm font-black text-[#a97407]">
+            <FaBuildingColumns />
+            الجامعات
           </span>
 
-          <h2 className="mt-6 text-4xl font-black leading-tight text-[#04153f] md:text-5xl">
-            اكتشف الجامعة المناسبة لمستقبلك
+          <h2 className="mt-5 text-3xl font-black text-[#04153f] sm:text-4xl">
+            اكتشف الجامعات المتاحة
           </h2>
 
-          <p className="mt-5 text-lg leading-8 text-gray-600">
-            ابحث وقارن بين الجامعات الحكومية والخاصة، وتعرّف على التخصصات
-            ولغات الدراسة وحالة التقديم.
+          <p className="mt-4 leading-8 text-gray-600">
+            اختر الجامعة المناسبة واطّلع على المدينة والرسوم ومعلومات التقديم.
           </p>
         </div>
 
-        <div className="mb-12 rounded-3xl border border-gray-100 bg-white p-5 shadow-xl shadow-gray-200/60">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[1.5fr_1fr_1fr_1fr]">
-            <div className="relative">
-              <FaSearch className="absolute right-5 top-1/2 -translate-y-1/2 text-gray-400" />
-
-              <input
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="ابحث باسم الجامعة..."
-                className="h-14 w-full rounded-2xl border border-gray-200 bg-gray-50 pr-12 pl-5 text-[#04153f] outline-none transition focus:border-[#c58a08] focus:bg-white focus:ring-4 focus:ring-[#c58a08]/10"
+        {loading ? (
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {[1, 2, 3].map((item) => (
+              <div
+                key={item}
+                className="h-[430px] animate-pulse rounded-3xl bg-white shadow-sm"
               />
-            </div>
-
-            <select
-              value={selectedCity}
-              onChange={(event) => setSelectedCity(event.target.value)}
-              className="h-14 rounded-2xl border border-gray-200 bg-gray-50 px-5 text-[#04153f] outline-none transition focus:border-[#c58a08] focus:ring-4 focus:ring-[#c58a08]/10"
-            >
-              {cities.map((city) => (
-                <option key={city} value={city}>
-                  {city === "الكل" ? "جميع الولايات" : city}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={selectedType}
-              onChange={(event) => setSelectedType(event.target.value)}
-              className="h-14 rounded-2xl border border-gray-200 bg-gray-50 px-5 text-[#04153f] outline-none transition focus:border-[#c58a08] focus:ring-4 focus:ring-[#c58a08]/10"
-            >
-              {universityTypes.map((type) => (
-                <option key={type} value={type}>
-                  {type === "الكل" ? "نوع الجامعة" : `جامعة ${type}`}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={selectedLanguage}
-              onChange={(event) => setSelectedLanguage(event.target.value)}
-              className="h-14 rounded-2xl border border-gray-200 bg-gray-50 px-5 text-[#04153f] outline-none transition focus:border-[#c58a08] focus:ring-4 focus:ring-[#c58a08]/10"
-            >
-              {studyLanguages.map((language) => (
-                <option key={language} value={language}>
-                  {language === "الكل" ? "لغة الدراسة" : language}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
-          <p className="text-gray-600">
-            تم العثور على{" "}
-            <span className="font-black text-[#04153f]">
-              {filteredUniversities.length}
-            </span>{" "}
-            جامعة
-          </p>
-
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-bold text-[#04153f] transition hover:border-[#c58a08] hover:text-[#c58a08]"
-          >
-            إعادة ضبط البحث
-          </button>
-        </div>
-
-        {filteredUniversities.length > 0 ? (
-          <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-3">
-            {filteredUniversities.map((university) => (
-              <article
-                key={university.id}
-                className="group overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-lg shadow-gray-200/60 transition duration-500 hover:-translate-y-2 hover:shadow-2xl"
-              >
-                <div className="relative flex h-56 items-center justify-center overflow-hidden bg-gradient-to-br from-[#04153f] via-[#09245e] to-[#0f3b88]">
-                  <div className="absolute inset-0 opacity-20">
-                    <div className="absolute -right-12 -top-12 h-44 w-44 rounded-full border border-white" />
-                    <div className="absolute -bottom-24 -left-16 h-64 w-64 rounded-full border border-white" />
-                  </div>
-
-                  <div className="relative flex h-24 w-24 items-center justify-center rounded-3xl border border-white/20 bg-white/10 backdrop-blur-md transition duration-500 group-hover:scale-110 group-hover:rotate-3">
-                    <FaUniversity className="text-5xl text-[#d89a00]" />
-                  </div>
-
-                  <span
-                    className={`absolute right-5 top-5 rounded-full px-4 py-2 text-xs font-bold shadow-lg ${getStatusClasses(
-                      university.applicationStatus,
-                    )}`}
-                  >
-                    التقديم {university.applicationStatus}
-                  </span>
-
-                  <span className="absolute bottom-5 left-5 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-bold text-white backdrop-blur-md">
-                    جامعة {university.type}
-                  </span>
-
-                  {university.featured && (
-                    <span className="absolute bottom-5 right-5 rounded-full bg-[#c58a08] px-4 py-2 text-xs font-bold text-white">
-                      مميزة
-                    </span>
-                  )}
-                </div>
-
-                <div className="p-7">
-                  <p className="text-sm font-bold text-[#c58a08]">
-                    {university.englishName}
-                  </p>
-
-                  <h3 className="mt-2 text-2xl font-black text-[#04153f]">
-                    {university.name}
-                  </h3>
-
-                  <div className="mt-5 flex items-center gap-2 text-gray-600">
-                    <FaMapMarkerAlt className="text-[#c58a08]" />
-                    <span>{university.city}، تركيا</span>
-                  </div>
-
-                  <div className="mt-6 grid grid-cols-2 gap-3">
-                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-                      <div className="mb-2 flex items-center gap-2 text-sm text-gray-500">
-                        <FaGraduationCap className="text-[#c58a08]" />
-                        التخصصات
-                      </div>
-
-                      <p className="font-black text-[#04153f]">
-                        {university.programs}+ برنامج
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-                      <div className="mb-2 flex items-center gap-2 text-sm text-gray-500">
-                        <FaGlobe className="text-[#c58a08]" />
-                        لغة الدراسة
-                      </div>
-
-                      <p className="line-clamp-1 font-black text-[#04153f]">
-                        {university.languages.join("، ")}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 flex items-center justify-between rounded-2xl border border-[#04153f]/5 bg-[#04153f]/5 p-4">
-                    <span className="text-sm text-gray-500">
-                      الرسوم الدراسية
-                    </span>
-
-                    <span className="font-black text-[#04153f]">
-                      {university.tuition}
-                    </span>
-                  </div>
-
-                  <div className="mt-6 grid grid-cols-2 gap-3">
-                    <Link
-                      href={`/universities/${university.slug}`}
-                      className="flex items-center justify-center gap-2 rounded-xl border-2 border-[#04153f] px-4 py-3 font-bold text-[#04153f] transition hover:bg-[#04153f] hover:text-white"
-                    >
-                      <FaBookOpen />
-                      التفاصيل
-                    </Link>
-
-                    <Link
-                      href={`/apply?university=${university.slug}`}
-                      className="flex items-center justify-center gap-2 rounded-xl bg-[#c58a08] px-4 py-3 font-bold text-white shadow-lg shadow-[#c58a08]/20 transition hover:-translate-y-0.5 hover:bg-[#a66f00]"
-                    >
-                      قدم الآن
-                      <FaArrowLeft />
-                    </Link>
-                  </div>
-                </div>
-              </article>
             ))}
           </div>
-        ) : (
-          <div className="rounded-3xl border border-dashed border-gray-300 bg-white py-20 text-center">
-            <FaSearch className="mx-auto text-5xl text-gray-300" />
-
-            <h3 className="mt-5 text-2xl font-black text-[#04153f]">
-              لم نعثر على جامعة مطابقة
-            </h3>
-
-            <p className="mt-2 text-gray-500">
-              غيّر اسم البحث أو خيارات التصفية ثم حاول مرة أخرى.
-            </p>
+        ) : errorMessage ? (
+          <div className="rounded-3xl border border-red-200 bg-red-50 p-8 text-center text-red-700">
+            <p className="font-black">تعذر تحميل الجامعات</p>
+            <p className="mt-2 text-sm">{errorMessage}</p>
 
             <button
               type="button"
-              onClick={resetFilters}
-              className="mt-6 rounded-xl bg-[#04153f] px-6 py-3 font-bold text-white transition hover:bg-[#09245e]"
+              onClick={fetchUniversities}
+              className="mt-5 rounded-xl bg-[#04153f] px-6 py-3 font-bold text-white"
             >
-              عرض جميع الجامعات
+              إعادة المحاولة
             </button>
           </div>
-        )}
+        ) : universities.length === 0 ? (
+          <div className="rounded-3xl border-2 border-dashed border-gray-300 bg-white px-6 py-16 text-center">
+            <FaBuildingColumns className="mx-auto text-6xl text-gray-300" />
+            <h3 className="mt-5 text-xl font-black text-[#04153f]">
+              لا توجد جامعات متاحة حاليًا
+            </h3>
+          </div>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {universities.map((university) => {
+              const image =
+                university.image_url ||
+                getPublicAssetUrl(university.image_storage_path);
 
-        <div className="mt-14 text-center">
-          <Link
-            href="/universities"
-            className="inline-flex items-center gap-3 rounded-2xl bg-[#04153f] px-8 py-4 font-bold text-white shadow-xl transition hover:-translate-y-1 hover:bg-[#09245e]"
-          >
-            استكشف جميع الجامعات
-            <FaArrowLeft className="text-[#c58a08]" />
-          </Link>
-        </div>
+              const logo =
+                university.logo_url ||
+                getPublicAssetUrl(university.logo_storage_path);
+
+              return (
+                <article
+                  key={university.id}
+                  className="group overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl"
+                >
+                  <div className="relative h-56 overflow-hidden bg-gray-100">
+                    {image ? (
+                      <img
+                        src={image}
+                        alt={university.name_ar}
+                        className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center">
+                        <FaBuildingColumns className="text-6xl text-gray-300" />
+                      </div>
+                    )}
+
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#04153f]/70 via-transparent to-transparent" />
+
+                    {university.is_featured && (
+                      <span className="absolute right-4 top-4 inline-flex items-center gap-2 rounded-full bg-[#c58a08] px-3 py-2 text-xs font-black text-white shadow">
+                        <FaStar />
+                        جامعة مميزة
+                      </span>
+                    )}
+
+                    <span className="absolute bottom-4 right-4 rounded-full bg-white/95 px-3 py-2 text-xs font-black text-[#04153f] shadow">
+                      {university.university_type === "public"
+                        ? "جامعة حكومية"
+                        : "جامعة خاصة"}
+                    </span>
+
+                    {logo && (
+                      <div className="absolute -bottom-0 left-4 flex h-16 w-16 translate-y-1/2 items-center justify-center overflow-hidden rounded-2xl border-4 border-white bg-white p-1 shadow-lg">
+                        <img
+                          src={logo}
+                          alt={`شعار ${university.name_ar}`}
+                          className="h-full w-full object-contain"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-6 pt-10">
+                    <h3 className="text-xl font-black text-[#04153f]">
+                      {university.name_ar}
+                    </h3>
+
+                    {university.name_tr && (
+                      <p dir="ltr" className="mt-1 text-right text-sm text-gray-500">
+                        {university.name_tr}
+                      </p>
+                    )}
+
+                    <div className="mt-4 flex flex-wrap gap-3 text-sm font-bold text-gray-600">
+                      {university.city && (
+                        <span className="inline-flex items-center gap-2">
+                          <FaLocationDot className="text-[#c58a08]" />
+                          {university.city}
+                        </span>
+                      )}
+
+                      <span className="inline-flex items-center gap-2">
+                        <FaMoneyBillWave className="text-[#c58a08]" />
+                        {formatTuition(
+                          university.tuition_min,
+                          university.tuition_max,
+                          university.currency || "USD"
+                        )}
+                      </span>
+                    </div>
+
+                    {university.short_description && (
+                      <p className="mt-5 line-clamp-3 leading-7 text-gray-600">
+                        {university.short_description}
+                      </p>
+                    )}
+
+                    <div className="mt-6 flex gap-3">
+                      {university.slug && (
+                        <a
+                          href={`/universities/${university.slug}`}
+                          className="flex-1 rounded-xl bg-[#04153f] px-5 py-3 text-center font-black text-white transition hover:bg-[#09245e]"
+                        >
+                          عرض التفاصيل
+                        </a>
+                      )}
+
+                      {university.application_url && (
+                        <a
+                          href={university.application_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 rounded-xl bg-[#c58a08] px-5 py-3 text-center font-black text-white transition hover:bg-[#e4a514]"
+                        >
+                          قدّم الآن
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
       </div>
     </section>
   );

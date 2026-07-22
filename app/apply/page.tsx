@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import {
   FaArrowRight,
   FaCheckCircle,
@@ -36,10 +37,60 @@ export default function ApplyPage() {
     universityNames[universitySlug] ?? "لم يتم اختيار جامعة";
 
   const [submitted, setSubmitted] = useState(false);
+  const [applicationId, setApplicationId] = useState<number | null>(null);
+  const [submittedPhone, setSubmittedPhone] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
+    setSubmitError("");
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+
+    const fullName = String(formData.get("fullName") ?? "").trim();
+    const email = String(formData.get("email") ?? "").trim();
+    const phone = String(formData.get("phone") ?? "").trim();
+    const nationality = String(formData.get("nationality") ?? "").trim();
+    const specialization = String(
+      formData.get("specialization") ?? ""
+    ).trim();
+    const notes = String(formData.get("message") ?? "").trim();
+
+    const { data, error } = await supabase
+      .from("registrations")
+      .insert([
+        {
+          full_name: fullName,
+          email,
+          phone,
+          nationality,
+          university: selectedUniversity,
+          specialization,
+          notes,
+          status: "new",
+        },
+      ])
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("Supabase registration error:", error);
+      setSubmitError("حدث خطأ أثناء إرسال الطلب. يرجى المحاولة مرة أخرى.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    setApplicationId(data.id);
+    setSubmittedPhone(phone);
+    form.reset();
     setSubmitted(true);
+    setIsSubmitting(false);
   }
 
   if (submitted) {
@@ -62,20 +113,49 @@ export default function ApplyPage() {
             والتواصل معك في أقرب وقت ممكن.
           </p>
 
-          <div className="mt-8 rounded-2xl bg-[#04153f]/5 p-5">
-            <p className="text-sm text-gray-500">الجامعة المختارة</p>
-            <p className="mt-2 text-xl font-black text-[#04153f]">
-              {selectedUniversity}
-            </p>
+          <div className="mt-8 grid gap-4 sm:grid-cols-2">
+            <div className="rounded-2xl bg-[#04153f]/5 p-5">
+              <p className="text-sm text-gray-500">رقم متابعة الطلب</p>
+              <p className="mt-2 text-2xl font-black tracking-wide text-[#04153f]">
+                {applicationId
+                  ? `VT-2026-${String(applicationId).padStart(6, "0")}`
+                  : "—"}
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-[#04153f]/5 p-5">
+              <p className="text-sm text-gray-500">الجامعة المختارة</p>
+              <p className="mt-2 text-xl font-black text-[#04153f]">
+                {selectedUniversity}
+              </p>
+            </div>
           </div>
 
-          <Link
-            href="/universities"
-            className="mt-8 inline-flex items-center gap-3 rounded-2xl bg-[#04153f] px-8 py-4 font-bold text-white transition hover:bg-[#09245e]"
-          >
-            العودة إلى الجامعات
-            <FaArrowRight />
-          </Link>
+          <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-7 text-amber-900">
+            احتفظ برقم الطلب ورقم الهاتف الذي سجلت به:
+            <span dir="ltr" className="mx-1 inline-block">
+              {submittedPhone}
+            </span>
+            لمتابعة حالة طلبك لاحقًا.
+          </div>
+
+          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+            <Link
+              href="/application-status"
+              className="inline-flex items-center justify-center gap-3 rounded-2xl bg-[#c58a08] px-8 py-4 font-bold text-white transition hover:bg-[#a66f00]"
+            >
+              متابعة حالة الطلب
+              <FaCheckCircle />
+            </Link>
+
+            <Link
+              href="/universities"
+              className="inline-flex items-center justify-center gap-3 rounded-2xl bg-[#04153f] px-8 py-4 font-bold text-white transition hover:bg-[#09245e]"
+            >
+              العودة إلى الجامعات
+              <FaArrowRight />
+            </Link>
+          </div>
         </div>
       </main>
     );
@@ -139,13 +219,13 @@ export default function ApplyPage() {
               <div>
                 <label
                   htmlFor="fullName"
-                  className="mb-2 block font-bold text-[#04153f]"
+                  className="mb-2 block text-base font-black text-[#04153f]"
                 >
                   الاسم الكامل
                 </label>
 
                 <div className="relative">
-                  <FaUser className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <FaUser className="absolute right-4 top-1/2 -translate-y-1/2 text-[#6b7896]" />
 
                   <input
                     id="fullName"
@@ -153,7 +233,7 @@ export default function ApplyPage() {
                     type="text"
                     required
                     placeholder="اكتب اسمك الكامل"
-                    className="h-14 w-full rounded-2xl border border-gray-200 bg-gray-50 pr-11 pl-4 outline-none transition focus:border-[#c58a08] focus:bg-white focus:ring-4 focus:ring-[#c58a08]/10"
+                    className="h-14 w-full rounded-2xl border border-gray-300 bg-white pr-11 pl-4 text-lg font-semibold text-[#04153f] placeholder:text-gray-400 outline-none transition-all duration-300 focus:border-[#c58a08] focus:ring-4 focus:ring-[#c58a08]/20"
                   />
                 </div>
               </div>
@@ -161,13 +241,13 @@ export default function ApplyPage() {
               <div>
                 <label
                   htmlFor="phone"
-                  className="mb-2 block font-bold text-[#04153f]"
+                  className="mb-2 block text-base font-black text-[#04153f]"
                 >
                   رقم الهاتف
                 </label>
 
                 <div className="relative">
-                  <FaPhoneAlt className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <FaPhoneAlt className="absolute right-4 top-1/2 -translate-y-1/2 text-[#6b7896]" />
 
                   <input
                     id="phone"
@@ -175,7 +255,7 @@ export default function ApplyPage() {
                     type="tel"
                     required
                     placeholder="+90 5XX XXX XX XX"
-                    className="h-14 w-full rounded-2xl border border-gray-200 bg-gray-50 pr-11 pl-4 outline-none transition focus:border-[#c58a08] focus:bg-white focus:ring-4 focus:ring-[#c58a08]/10"
+                    className="h-14 w-full rounded-2xl border border-gray-300 bg-white pr-11 pl-4 text-lg font-semibold text-[#04153f] placeholder:text-gray-400 outline-none transition-all duration-300 focus:border-[#c58a08] focus:ring-4 focus:ring-[#c58a08]/20"
                   />
                 </div>
               </div>
@@ -183,13 +263,13 @@ export default function ApplyPage() {
               <div>
                 <label
                   htmlFor="email"
-                  className="mb-2 block font-bold text-[#04153f]"
+                  className="mb-2 block text-base font-black text-[#04153f]"
                 >
                   البريد الإلكتروني
                 </label>
 
                 <div className="relative">
-                  <FaEnvelope className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <FaEnvelope className="absolute right-4 top-1/2 -translate-y-1/2 text-[#6b7896]" />
 
                   <input
                     id="email"
@@ -197,7 +277,7 @@ export default function ApplyPage() {
                     type="email"
                     required
                     placeholder="example@email.com"
-                    className="h-14 w-full rounded-2xl border border-gray-200 bg-gray-50 pr-11 pl-4 outline-none transition focus:border-[#c58a08] focus:bg-white focus:ring-4 focus:ring-[#c58a08]/10"
+                    className="h-14 w-full rounded-2xl border border-gray-300 bg-white pr-11 pl-4 text-lg font-semibold text-[#04153f] placeholder:text-gray-400 outline-none transition-all duration-300 focus:border-[#c58a08] focus:ring-4 focus:ring-[#c58a08]/20"
                   />
                 </div>
               </div>
@@ -205,7 +285,7 @@ export default function ApplyPage() {
               <div>
                 <label
                   htmlFor="nationality"
-                  className="mb-2 block font-bold text-[#04153f]"
+                  className="mb-2 block text-base font-black text-[#04153f]"
                 >
                   الجنسية
                 </label>
@@ -216,14 +296,14 @@ export default function ApplyPage() {
                   type="text"
                   required
                   placeholder="اكتب جنسيتك"
-                  className="h-14 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 outline-none transition focus:border-[#c58a08] focus:bg-white focus:ring-4 focus:ring-[#c58a08]/10"
+                  className="h-14 w-full rounded-2xl border border-gray-300 bg-white px-4 text-lg font-semibold text-[#04153f] placeholder:text-gray-400 outline-none transition-all duration-300 focus:border-[#c58a08] focus:ring-4 focus:ring-[#c58a08]/20"
                 />
               </div>
 
               <div>
                 <label
                   htmlFor="degree"
-                  className="mb-2 block font-bold text-[#04153f]"
+                  className="mb-2 block text-base font-black text-[#04153f]"
                 >
                   المرحلة الدراسية
                 </label>
@@ -233,7 +313,7 @@ export default function ApplyPage() {
                   name="degree"
                   required
                   defaultValue=""
-                  className="h-14 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 outline-none transition focus:border-[#c58a08] focus:bg-white focus:ring-4 focus:ring-[#c58a08]/10"
+                  className="h-14 w-full rounded-2xl border border-gray-300 bg-white px-4 text-lg font-semibold text-[#04153f] placeholder:text-gray-400 outline-none transition-all duration-300 focus:border-[#c58a08] focus:ring-4 focus:ring-[#c58a08]/20"
                 >
                   <option value="" disabled>
                     اختر المرحلة الدراسية
@@ -248,7 +328,7 @@ export default function ApplyPage() {
               <div>
                 <label
                   htmlFor="specialization"
-                  className="mb-2 block font-bold text-[#04153f]"
+                  className="mb-2 block text-base font-black text-[#04153f]"
                 >
                   التخصص المطلوب
                 </label>
@@ -259,7 +339,7 @@ export default function ApplyPage() {
                   type="text"
                   required
                   placeholder="مثال: الطب، الهندسة، إدارة الأعمال"
-                  className="h-14 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 outline-none transition focus:border-[#c58a08] focus:bg-white focus:ring-4 focus:ring-[#c58a08]/10"
+                  className="h-14 w-full rounded-2xl border border-gray-300 bg-white px-4 text-lg font-semibold text-[#04153f] placeholder:text-gray-400 outline-none transition-all duration-300 focus:border-[#c58a08] focus:ring-4 focus:ring-[#c58a08]/20"
                 />
               </div>
             </div>
@@ -267,7 +347,7 @@ export default function ApplyPage() {
             <div className="mt-6">
               <label
                 htmlFor="message"
-                className="mb-2 block font-bold text-[#04153f]"
+                className="mb-2 block text-base font-black text-[#04153f]"
               >
                 ملاحظات إضافية
               </label>
@@ -277,15 +357,22 @@ export default function ApplyPage() {
                 name="message"
                 rows={5}
                 placeholder="اكتب أي معلومات أو استفسارات إضافية..."
-                className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 p-4 outline-none transition focus:border-[#c58a08] focus:bg-white focus:ring-4 focus:ring-[#c58a08]/10"
+                className="w-full resize-none rounded-2xl border border-gray-300 bg-white p-4 text-lg font-semibold text-[#04153f] placeholder:text-gray-400 outline-none transition-all duration-300 focus:border-[#c58a08] focus:ring-4 focus:ring-[#c58a08]/20"
               />
             </div>
 
+            {submitError && (
+              <p className="mt-6 rounded-2xl bg-red-50 px-4 py-3 text-center font-bold text-red-600">
+                {submitError}
+              </p>
+            )}
+
             <button
               type="submit"
-              className="mt-8 flex w-full items-center justify-center gap-3 rounded-2xl bg-[#c58a08] px-8 py-4 text-lg font-black text-white shadow-xl shadow-[#c58a08]/20 transition hover:-translate-y-1 hover:bg-[#a66f00]"
+              disabled={isSubmitting}
+              className="mt-8 flex w-full items-center justify-center gap-3 rounded-2xl bg-[#c58a08] px-8 py-4 text-lg font-black text-white shadow-xl shadow-[#c58a08]/20 transition hover:-translate-y-1 hover:bg-[#a66f00] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
             >
-              إرسال طلب التقديم
+              {isSubmitting ? "جارٍ إرسال الطلب..." : "إرسال طلب التقديم"}
               <FaGraduationCap />
             </button>
 
