@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { Suspense, FormEvent, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   FaArrowRight,
@@ -30,6 +30,14 @@ const universityNames: Record<string, string> = {
 };
 
 export default function ApplyPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">جاري التحميل...</div>}>
+      <ApplyContent />
+    </Suspense>
+  );
+}
+
+function ApplyContent() {
   const searchParams = useSearchParams();
   const universitySlug = searchParams.get("university") ?? "";
 
